@@ -13,7 +13,7 @@ Should work on build 789x+ but only tested on 7957+ for now.
 Will not work on builds 8441-9200, due to a bad check in the HAL. For those builds, bring in [working prodsigned HAL from build 8400](https://msdl.microsoft.com/download/symbols/hal.dll/4fb707aa3a000/hal.dll).
 
 ## halextbcm2709
-HAL extension for BCM2709 interrupt controllers (BCM2709 ARM local interrupt controller, and BCM2708 VC4 global interrupt controller). Backported from rs1-era HAL.
+HAL extension for QCOM8250 interrupt controllers (QCOM8250 ARM local interrupt controller). Backported from rs1-era HAL.
 
 Interrupt controller HAL extensions have an interesting history, they were added in 789x but removed again in 799x, for builds since then we have to pattern match to find the functions that are no longer exported. Additionally various data structures changed over time, so that must be detected too.
 
