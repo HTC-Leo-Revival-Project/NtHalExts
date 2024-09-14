@@ -1,5 +1,5 @@
 
-// BCM2709 ARM local peripherals interrupts 
+// QCOM8250 ARM local peripherals interrupts 
 
 INTERRUPT_DEFINE(CNTPS, 0)
 INTERRUPT_DEFINE(CNTPNS, 1)
