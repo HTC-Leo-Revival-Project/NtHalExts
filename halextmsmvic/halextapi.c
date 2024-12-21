@@ -329,7 +329,7 @@ static NTSTATUS HepFindInterruptApis(BOOLEAN ForM2) {
 	}
 	ULONG pHalSetInterruptProblem = (ULONG)HepDecodeCall(CallSetInterruptProblem);
 	// bugcheck for analysing the pattern match result
-	//KeBugCheckEx(0x1337, (ULONG)CallSetInterruptProblem - HalBase, (ULONG)pHalSetInterruptProblem - HalBase, HalBase, 0);
+	KeBugCheckEx(0x1337, (ULONG)CallSetInterruptProblem - HalBase, (ULONG)pHalSetInterruptProblem - HalBase, HalBase, 0);
 	HalpSetInterruptProblem = (tfpSetInterruptProblem)(pHalSetInterruptProblem | 1);
 	}
 	
@@ -352,7 +352,7 @@ static NTSTATUS HepFindInterruptApis(BOOLEAN ForM2) {
 	}
 	ULONG pHalpInterruptRegisterLine = (ULONG)HepDecodeCall(Call);
 	// bugcheck for analysing the pattern match result
-	//KeBugCheckEx(0x1337, (ULONG)Call - HalBase, (ULONG)pHalpInterruptRegisterLine - HalBase, HalBase, 0);
+	KeBugCheckEx(0x1337, (ULONG)Call - HalBase, (ULONG)pHalpInterruptRegisterLine - HalBase, HalBase, 0);
 	HalpInterruptRegisterLine = (tfpInterruptRegisterLine)(pHalpInterruptRegisterLine | 1);
 	}
 	
@@ -450,6 +450,7 @@ HextRegisterInterruptController (
 ) {
 	NTSTATUS Status;
 	INTERRUPT_INITIALIZATION_BLOCK_UNION NewApi;
+	
 	switch (s_Version) {
 	case VERSION_M2:
 		return HepRegisterInterruptControllerM2(Handle, ResourceGroup, NewController);

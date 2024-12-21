@@ -143,41 +143,41 @@ static ULONG BcmpGetCurrentProcessor(void) {
 	return KeGetCurrentProcessorNumberEx(NULL);
 }
 
-static NTSTATUS BcmpEnsureMmioMapped(PQCOM8250_INTERRUPT_DATA Bcm2709) {
-	if (Bcm2709->ArmPeriphVirt == NULL) {
+static NTSTATUS BcmpEnsureMmioMapped(PQCOM8250_INTERRUPT_DATA Qsd8250) {
+	if (Qsd8250->ArmPeriphVirt == NULL) {
 		PHYSICAL_ADDRESS ArmPeriphPhys;
 		ArmPeriphPhys.QuadPart = QCOM8250_ARM_LOCAL_PHYS;
-		Bcm2709->ArmPeriphVirt = (PQCOM8250_ARM_LOCAL) HalMapIoSpace(ArmPeriphPhys, PAGE_SIZE, MmNonCached);
-		if (Bcm2709->ArmPeriphVirt == NULL) {
-			SET_INTERRUPT_PROBLEM(Bcm2709, InterruptProblemNullParameter, STATUS_INSUFFICIENT_RESOURCES);
+		Qsd8250->ArmPeriphVirt = (PQCOM8250_ARM_LOCAL) HalMapIoSpace(ArmPeriphPhys, PAGE_SIZE, MmNonCached);
+		if (Qsd8250->ArmPeriphVirt == NULL) {
+			SET_INTERRUPT_PROBLEM(Qsd8250, InterruptProblemNullParameter, STATUS_INSUFFICIENT_RESOURCES);
 		}
 	}
-	if (Bcm2709->Vc4InterruptVirt == NULL) {
+	if (Qsd8250->Vc4InterruptVirt == NULL) {
 		PHYSICAL_ADDRESS Vc4InterruptPhys;
 		Vc4InterruptPhys.QuadPart = BCM2708_VC4_INTERRUPT_PHYS;
-		Bcm2709->Vc4InterruptVirt = (PBCM2708_INTERRUPT_CONTROLLER) HalMapIoSpace(Vc4InterruptPhys, sizeof(*Bcm2709->Vc4InterruptVirt), MmNonCached);
-		if (Bcm2709->Vc4InterruptVirt == NULL) {
-			SET_INTERRUPT_PROBLEM(Bcm2709, InterruptProblemNullParameter, STATUS_INSUFFICIENT_RESOURCES);
+		Qsd8250->Vc4InterruptVirt = (PBCM2708_INTERRUPT_CONTROLLER) HalMapIoSpace(Vc4InterruptPhys, sizeof(*Qsd8250->Vc4InterruptVirt), MmNonCached);
+		if (Qsd8250->Vc4InterruptVirt == NULL) {
+			SET_INTERRUPT_PROBLEM(Qsd8250, InterruptProblemNullParameter, STATUS_INSUFFICIENT_RESOURCES);
 		}
-		Bcm2709->Vc4InterruptVirt->DisableBasic = 
-			Bcm2709->Vc4InterruptVirt->Disable[0] = 
-			Bcm2709->Vc4InterruptVirt->Disable[1] = 
+		Qsd8250->Vc4InterruptVirt->DisableBasic = 
+			Qsd8250->Vc4InterruptVirt->Disable[0] = 
+			Qsd8250->Vc4InterruptVirt->Disable[1] = 
 				0xFFFFFFFF;
 	}
 	return STATUS_SUCCESS;
 }
 
-static NTSTATUS BcmpDescribeLinesImpl(PQCOM8250_INTERRUPT_DATA Bcm2709) {
+static NTSTATUS BcmpDescribeLinesImpl(PQCOM8250_INTERRUPT_DATA Qsd8250) {
 	INTERRUPT_LINE_DESCRIPTION Description = {0};
 	Description.Type = InterruptLineOutputPin;
 	Description.MinLine = 1;
 	Description.MaxLine = 2;
-	Description.ControllerIdentifier = Bcm2709->ControllerIdentifier;
+	Description.ControllerIdentifier = Qsd8250->ControllerIdentifier;
 	Description.OutputUnitId = 0xFFFFFFFF;
 	Description.GsiBase = 0xFFFFFFFF;
 	NTSTATUS Status = HextRegisterInterruptLines(s_Handle, s_ResourceGroup, &Description);
 	if (!NT_SUCCESS(Status)) return Status;
-	ULONG GsiBase = Bcm2709->GsiBase;
+	ULONG GsiBase = Qsd8250->GsiBase;
 	Description.OutputUnitId = 0;
 	
 	
@@ -213,13 +213,13 @@ static NTSTATUS BcmpDescribeLinesImpl(PQCOM8250_INTERRUPT_DATA Bcm2709) {
 	return Status;
 }
 
-static NTSTATUS BcmpDescribeLines(PQCOM8250_INTERRUPT_DATA Bcm2709) {
-	if (Bcm2709->LinesDescribed) return STATUS_SUCCESS;
+static NTSTATUS BcmpDescribeLines(PQCOM8250_INTERRUPT_DATA Qsd8250) {
+	if (Qsd8250->LinesDescribed) return STATUS_SUCCESS;
 	// Already done at M2.
 	if (!HextVersionIsM2()) {
-		BcmpDescribeLinesImpl(Bcm2709);
+		BcmpDescribeLinesImpl(Qsd8250);
 	}
-	Bcm2709->LinesDescribed = TRUE;
+	Qsd8250->LinesDescribed = TRUE;
 	return STATUS_SUCCESS;
 }
 
@@ -232,30 +232,30 @@ static UCHAR BcmpGetPriorityForLine(ULONG ProcessorNumber, ULONG InterruptNumber
 	return QCOM8250_INVALID_PRIORITY;
 }
 
-static void BcmpToggleInterrupt(PQCOM8250_INTERRUPT_DATA Bcm2709, ULONG InterruptNumber, ULONG ProcessorNumber, BOOLEAN Enable) {
+static void BcmpToggleInterrupt(PQCOM8250_INTERRUPT_DATA Qsd8250, ULONG InterruptNumber, ULONG ProcessorNumber, BOOLEAN Enable) {
 	if (QCOM8250_INTERRUPT_WITHIN(InterruptNumber, Timer)) {
 		ULONG Offset = QCOM8250_INTERRUPT_OFFSET(InterruptNumber, Timer);
-		ULONG Value = Bcm2709->ArmPeriphVirt->TIMER_IRQ[ProcessorNumber];
+		ULONG Value = Qsd8250->ArmPeriphVirt->TIMER_IRQ[ProcessorNumber];
 		// mask out irq+fiq enabled bits
 		ULONG MaskField = (1 << Offset) | (1 << (Offset + 4));
 		Value &= ~MaskField;
 		// set IRQ if enabled
 		if (Enable) Value |= (1 << Offset);
 		// set the register
-		Bcm2709->ArmPeriphVirt->TIMER_IRQ[ProcessorNumber] = Value;
+		Qsd8250->ArmPeriphVirt->TIMER_IRQ[ProcessorNumber] = Value;
 		return;
 	}
 	
 	if (QCOM8250_INTERRUPT_WITHIN(InterruptNumber, Mailbox)) {
 		ULONG Offset = QCOM8250_INTERRUPT_OFFSET(InterruptNumber, Mailbox);
-		ULONG Value = Bcm2709->ArmPeriphVirt->MAILBOX_IRQ[ProcessorNumber];
+		ULONG Value = Qsd8250->ArmPeriphVirt->MAILBOX_IRQ[ProcessorNumber];
 		// mask out irq + fiq enabled bits
 		ULONG MaskField = (1 << Offset) | (1 << (Offset + 4));
 		Value &= ~MaskField;
 		// set IRQ if enabled
 		if (Enable) Value |= (1 << Offset);
 		// set the register
-		Bcm2709->ArmPeriphVirt->MAILBOX_IRQ[ProcessorNumber] = Value;
+		Qsd8250->ArmPeriphVirt->MAILBOX_IRQ[ProcessorNumber] = Value;
 		return;
 	}
 	
@@ -267,11 +267,11 @@ static void BcmpToggleInterrupt(PQCOM8250_INTERRUPT_DATA Bcm2709, ULONG Interrup
 		if (!Enable) {
 			// clear IRQ + FIQ enabled bits
 			ULONG MaskField = (1 << ProcessorNumber) | (1 << (ProcessorNumber + 4));
-			Bcm2709->ArmPeriphVirt->PMU_CONTROL_CLR = MaskField;
+			Qsd8250->ArmPeriphVirt->PMU_CONTROL_CLR = MaskField;
 			return;
 		}
-		Bcm2709->ArmPeriphVirt->PMU_CONTROL_CLR = (1 << (ProcessorNumber + 4));
-		Bcm2709->ArmPeriphVirt->PMU_CONTROL_SET = (1 << ProcessorNumber);
+		Qsd8250->ArmPeriphVirt->PMU_CONTROL_CLR = (1 << (ProcessorNumber + 4));
+		Qsd8250->ArmPeriphVirt->PMU_CONTROL_SET = (1 << ProcessorNumber);
 		return;
 	}
 	
@@ -283,9 +283,9 @@ static void BcmpToggleInterrupt(PQCOM8250_INTERRUPT_DATA Bcm2709, ULONG Interrup
 	if (QCOM8250_INTERRUPT_WITHIN(InterruptNumber, Controller0)) {
 		ULONG Offset = QCOM8250_INTERRUPT_OFFSET(InterruptNumber, Controller0);
 		if (!Enable) {
-			Bcm2709->Vc4InterruptVirt->Disable[0] = (1 << Offset);
+			Qsd8250->Vc4InterruptVirt->Disable[0] = (1 << Offset);
 		} else {
-			Bcm2709->Vc4InterruptVirt->Enable[0] = (1 << Offset);
+			Qsd8250->Vc4InterruptVirt->Enable[0] = (1 << Offset);
 		}
 		return;
 	}
@@ -293,9 +293,9 @@ static void BcmpToggleInterrupt(PQCOM8250_INTERRUPT_DATA Bcm2709, ULONG Interrup
 	if (QCOM8250_INTERRUPT_WITHIN(InterruptNumber, Controller1)) {
 		ULONG Offset = QCOM8250_INTERRUPT_OFFSET(InterruptNumber, Controller1);
 		if (!Enable) {
-			Bcm2709->Vc4InterruptVirt->Disable[1] = (1 << Offset);
+			Qsd8250->Vc4InterruptVirt->Disable[1] = (1 << Offset);
 		} else {
-			Bcm2709->Vc4InterruptVirt->Enable[1] = (1 << Offset);
+			Qsd8250->Vc4InterruptVirt->Enable[1] = (1 << Offset);
 		}
 		return;
 	}
@@ -303,17 +303,17 @@ static void BcmpToggleInterrupt(PQCOM8250_INTERRUPT_DATA Bcm2709, ULONG Interrup
 	if (QCOM8250_INTERRUPT_WITHIN(InterruptNumber, Basic)) {
 		ULONG Offset = QCOM8250_INTERRUPT_OFFSET(InterruptNumber, Basic);
 		if (!Enable) {
-			Bcm2709->Vc4InterruptVirt->DisableBasic = (1 << Offset);
+			Qsd8250->Vc4InterruptVirt->DisableBasic = (1 << Offset);
 		} else {
-			Bcm2709->Vc4InterruptVirt->EnableBasic = (1 << Offset);
+			Qsd8250->Vc4InterruptVirt->EnableBasic = (1 << Offset);
 		}
 		return;
 	}
 }
 
-static void BcmpToggleAllInterrupts(PQCOM8250_INTERRUPT_DATA Bcm2709, ULONG ProcessorNumber) {
-	ULONG CorePriority = Bcm2709->LocalPriorityForCore[ProcessorNumber];
-	ULONG PriorityForLine = Bcm2709->LocalPriorityForLine[ProcessorNumber];
+static void BcmpToggleAllInterrupts(PQCOM8250_INTERRUPT_DATA Qsd8250, ULONG ProcessorNumber) {
+	ULONG CorePriority = Qsd8250->LocalPriorityForCore[ProcessorNumber];
+	ULONG PriorityForLine = Qsd8250->LocalPriorityForLine[ProcessorNumber];
 	if (CorePriority <= PriorityForLine)
 		CorePriority = PriorityForLine;
 	// VC4 interrupts only go to core 0. If this is for another core, only disable local controller interrupts.
@@ -323,7 +323,7 @@ static void BcmpToggleAllInterrupts(PQCOM8250_INTERRUPT_DATA Bcm2709, ULONG Proc
 		UCHAR Priority = BcmpGetPriorityForLine(ProcessorNumber, InterruptNumber);
 		if (Priority == QCOM8250_INVALID_PRIORITY) continue;
 		BOOLEAN Enable = Priority > CorePriority;
-		BcmpToggleInterrupt(Bcm2709, InterruptNumber, ProcessorNumber, Enable);
+		BcmpToggleInterrupt(Qsd8250, InterruptNumber, ProcessorNumber, Enable);
 	}
 }
 
@@ -331,19 +331,19 @@ static ULONG BcmpGetSingleRaisedVector(ULONG IrqSources) {
 	return (QCOM8250_INTERRUPT_CAUSE_SINGLE_COUNT - 1) - _arm_clz(IrqSources);
 }
 
-static ULONG BcmpGetRaisedVector(PQCOM8250_INTERRUPT_DATA Bcm2709, ULONG ProcessorNumber) {
-	ULONG ArmRaised = Bcm2709->ArmPeriphVirt->IRQ_SOURCE[ProcessorNumber];
-	ULONG ArmRaisedSingle = BcmpGetSingleRaisedVector(Bcm2709->ArmPeriphVirt->IRQ_SOURCE[ProcessorNumber]);
+static ULONG BcmpGetRaisedVector(PQCOM8250_INTERRUPT_DATA Qsd8250, ULONG ProcessorNumber) {
+	ULONG ArmRaised = Qsd8250->ArmPeriphVirt->IRQ_SOURCE[ProcessorNumber];
+	ULONG ArmRaisedSingle = BcmpGetSingleRaisedVector(Qsd8250->ArmPeriphVirt->IRQ_SOURCE[ProcessorNumber]);
 	if (ArmRaisedSingle == VECTOR_VC4) {
-		ULONG InterruptRaised = BcmpGetSingleRaisedVector(Bcm2709->Vc4InterruptVirt->Pending[0]);
+		ULONG InterruptRaised = BcmpGetSingleRaisedVector(Qsd8250->Vc4InterruptVirt->Pending[0]);
 		if (InterruptRaised != 0xFFFFFFFF) {
 			return QCOM8250_INTERRUPT_START(Controller0) + InterruptRaised;
 		}
-		InterruptRaised = BcmpGetSingleRaisedVector(Bcm2709->Vc4InterruptVirt->Pending[1]);
+		InterruptRaised = BcmpGetSingleRaisedVector(Qsd8250->Vc4InterruptVirt->Pending[1]);
 		if (InterruptRaised != 0xFFFFFFFF) {
 			return QCOM8250_INTERRUPT_START(Controller1) + InterruptRaised;
 		}
-		InterruptRaised = BcmpGetSingleRaisedVector(Bcm2709->Vc4InterruptVirt->BasicPending);
+		InterruptRaised = BcmpGetSingleRaisedVector(Qsd8250->Vc4InterruptVirt->BasicPending);
 		if (InterruptRaised != 0xFFFFFFFF) {
 			return QCOM8250_INTERRUPT_START(Basic) + InterruptRaised;
 		}
@@ -353,51 +353,51 @@ static ULONG BcmpGetRaisedVector(PQCOM8250_INTERRUPT_DATA Bcm2709, ULONG Process
 }
 
 static NTSTATUS BcmpInitializeLocalUnit(
-	__in PQCOM8250_INTERRUPT_DATA Bcm2709,
+	__in PQCOM8250_INTERRUPT_DATA Qsd8250,
 	__in ULONG ProcessorNumber,
 	__in ULONG SpuriousVector,
 	__in ULONG StubVector,
 	__in ULONG LocalErrorVector,
 	__out PULONG LocalId
 ) {
-	NTSTATUS Status = BcmpEnsureMmioMapped(Bcm2709);
+	NTSTATUS Status = BcmpEnsureMmioMapped(Qsd8250);
 	if (!NT_SUCCESS(Status)) return Status;
 	*LocalId = __mrc(15, 0, 0, 0, 5) & 0xF;
 	return STATUS_SUCCESS;
 }
 
-static NTSTATUS BcmpInitializeIoUnit(__in PQCOM8250_INTERRUPT_DATA Bcm2709) {
-	NTSTATUS Status = BcmpEnsureMmioMapped(Bcm2709);
+static NTSTATUS BcmpInitializeIoUnit(__in PQCOM8250_INTERRUPT_DATA Qsd8250) {
+	NTSTATUS Status = BcmpEnsureMmioMapped(Qsd8250);
 	if (!NT_SUCCESS(Status)) return Status;
-	Status = BcmpDescribeLines(Bcm2709);
+	Status = BcmpDescribeLines(Qsd8250);
 	if (!NT_SUCCESS(Status)) {
-		SET_INTERRUPT_PROBLEM(Bcm2709, InterruptProblemInvalidId, Status);
+		SET_INTERRUPT_PROBLEM(Qsd8250, InterruptProblemInvalidId, Status);
 	}
 	return STATUS_SUCCESS;
 }
 
-static void BcmpSetPriority(__in PQCOM8250_INTERRUPT_DATA Bcm2709, __in ULONG NewPriority) {
+static void BcmpSetPriority(__in PQCOM8250_INTERRUPT_DATA Qsd8250, __in ULONG NewPriority) {
 	ULONG ProcessorNumber = BcmpGetCurrentProcessor();
 	// Acquire the spinlock if required.
 	BOOLEAN SpinLockAcquired = FALSE;
 	if (ProcessorNumber == 0) {
-		KeAcquireSpinLockAtDpcLevel(&Bcm2709->SpinLock);
+		KeAcquireSpinLockAtDpcLevel(&Qsd8250->SpinLock);
 		SpinLockAcquired = TRUE;
 	}
 	// Set the priority in the interrupt data
-	Bcm2709->LocalPriorityForCore[ProcessorNumber] = NewPriority;
+	Qsd8250->LocalPriorityForCore[ProcessorNumber] = NewPriority;
 	// Mask off all interrupts appropriate for the new priority.
-	BcmpToggleAllInterrupts(Bcm2709, ProcessorNumber);
+	BcmpToggleAllInterrupts(Qsd8250, ProcessorNumber);
 	// Release the spinlock if needed.
-	if (SpinLockAcquired) KeReleaseSpinLockFromDpcLevel(&Bcm2709->SpinLock);
+	if (SpinLockAcquired) KeReleaseSpinLockFromDpcLevel(&Qsd8250->SpinLock);
 }
 
-static INTERRUPT_RESULT BcmpAcceptAndGetSource(__in PQCOM8250_INTERRUPT_DATA Bcm2709, __out PLONG Line, __out PULONG OpaqueData) {
+static INTERRUPT_RESULT BcmpAcceptAndGetSource(__in PQCOM8250_INTERRUPT_DATA Qsd8250, __out PLONG Line, __out PULONG OpaqueData) {
 	*Line = 0;
 	*OpaqueData = 0;
 	ULONG ProcessorNumber = BcmpGetCurrentProcessor();
 	// Get a single raised interrupt for this processor.
-	ULONG InterruptRaised = BcmpGetRaisedVector(Bcm2709, ProcessorNumber);
+	ULONG InterruptRaised = BcmpGetRaisedVector(Qsd8250, ProcessorNumber);
 	
 	// Check for spurious interrupt.
 	if (InterruptRaised == 0xFFFFFFFF) return InterruptBeginSpurious;
@@ -406,27 +406,27 @@ static INTERRUPT_RESULT BcmpAcceptAndGetSource(__in PQCOM8250_INTERRUPT_DATA Bcm
 	if (QCOM8250_INTERRUPT_WITHIN(InterruptRaised, Mailbox)) {
 		ULONG Offset = QCOM8250_INTERRUPT_OFFSET(InterruptRaised, Mailbox);
 		// Clear the mailbox.
-		Bcm2709->ArmPeriphVirt->MAILBOX_CLR[ProcessorNumber].Value[Offset] = 0xFFFFFFFF;
+		Qsd8250->ArmPeriphVirt->MAILBOX_CLR[ProcessorNumber].Value[Offset] = 0xFFFFFFFF;
 	}
 	
 	// Get the current priority.
-	ULONG OldPriority = Bcm2709->LocalPriorityForLine[ProcessorNumber];
+	ULONG OldPriority = Qsd8250->LocalPriorityForLine[ProcessorNumber];
 	// Set line and opaque data.
 	*Line = InterruptRaised;
 	*OpaqueData = (OldPriority << 16) | InterruptRaised;
 	// Set the priority to the correct one for this interrupt.
-	BcmpSetPriority(Bcm2709, BcmpGetPriorityForLine(ProcessorNumber, InterruptRaised));
+	BcmpSetPriority(Qsd8250, BcmpGetPriorityForLine(ProcessorNumber, InterruptRaised));
 	return InterruptBeginLine;
 }
 
-static void BcmpWriteEndOfInterrupt(__in PQCOM8250_INTERRUPT_DATA Bcm2709, __in ULONG OpaqueToken) {
+static void BcmpWriteEndOfInterrupt(__in PQCOM8250_INTERRUPT_DATA Qsd8250, __in ULONG OpaqueToken) {
 	// Get the old priority from the opaque token.
 	ULONG OldPriority = OpaqueToken >> 16;
 	// Set the priority to the old one.
-	BcmpSetPriority(Bcm2709, OldPriority);
+	BcmpSetPriority(Qsd8250, OldPriority);
 }
 
-static NTSTATUS BcmpSetLineStateInternal(__in PQCOM8250_INTERRUPT_DATA Bcm2709, __in PINTERRUPT_LINE Line, __in PINTERRUPT_LINE_STATE LineState) {
+static NTSTATUS BcmpSetLineStateInternal(__in PQCOM8250_INTERRUPT_DATA Qsd8250, __in PINTERRUPT_LINE Line, __in PINTERRUPT_LINE_STATE LineState) {
 	BOOLEAN Enabled = (LineState->Flags & INTERRUPT_LINE_ENABLED) != 0;
 	//if (LineState->EmulateActiveBoth) return STATUS_NOT_SUPPORTED;
 	UCHAR Priority = QCOM8250_INVALID_PRIORITY;
@@ -456,13 +456,13 @@ static NTSTATUS BcmpSetLineStateInternal(__in PQCOM8250_INTERRUPT_DATA Bcm2709, 
 		AffinityMask = (1 << BcmpGetCurrentProcessor());
 		break;
 	default:
-		SET_INTERRUPT_PROBLEM(Bcm2709, InterruptProblemInvalidType, STATUS_NOT_SUPPORTED);
+		SET_INTERRUPT_PROBLEM(Qsd8250, InterruptProblemInvalidType, STATUS_NOT_SUPPORTED);
 	}
 	
 	// Acquire the spinlock if processor 0 is included in the affinity mask.
 	BOOLEAN SpinLockAcquired = FALSE;
 	if ((AffinityMask & BIT(0)) != 0) {
-		KeAcquireSpinLockAtDpcLevel(&Bcm2709->SpinLock);
+		KeAcquireSpinLockAtDpcLevel(&Qsd8250->SpinLock);
 		SpinLockAcquired = TRUE;
 	}
 	
@@ -473,8 +473,8 @@ static NTSTATUS BcmpSetLineStateInternal(__in PQCOM8250_INTERRUPT_DATA Bcm2709, 
 		
 		BOOLEAN EnableForThisCore = FALSE;
 		if (Priority != QCOM8250_INVALID_PRIORITY) {
-			ULONG CorePriority = Bcm2709->LocalPriorityForCore[Processor];
-			ULONG PriorityForLine = Bcm2709->LocalPriorityForLine[Processor];
+			ULONG CorePriority = Qsd8250->LocalPriorityForCore[Processor];
+			ULONG PriorityForLine = Qsd8250->LocalPriorityForLine[Processor];
 			if (CorePriority <= PriorityForLine)
 				CorePriority = PriorityForLine;
 			EnableForThisCore = (Priority > CorePriority);
@@ -490,25 +490,25 @@ static NTSTATUS BcmpSetLineStateInternal(__in PQCOM8250_INTERRUPT_DATA Bcm2709, 
 			}
 		}
 		// Enable or disable the interrupt at the interrupt controller.
-		BcmpToggleInterrupt(Bcm2709, Interrupt, Processor, EnableForThisCore && Enabled);
+		BcmpToggleInterrupt(Qsd8250, Interrupt, Processor, EnableForThisCore && Enabled);
 	}
 	
 	// Release the spinlock if needed.
-	if (SpinLockAcquired) KeReleaseSpinLockFromDpcLevel(&Bcm2709->SpinLock);
+	if (SpinLockAcquired) KeReleaseSpinLockFromDpcLevel(&Qsd8250->SpinLock);
 	return STATUS_SUCCESS;
 }
 
-static NTSTATUS BcmpSetLineState(__in PQCOM8250_INTERRUPT_DATA Bcm2709, __in PINTERRUPT_LINE Line, __in PINTERRUPT_LINE_STATE NewState) {
+static NTSTATUS BcmpSetLineState(__in PQCOM8250_INTERRUPT_DATA Qsd8250, __in PINTERRUPT_LINE Line, __in PINTERRUPT_LINE_STATE NewState) {
 	// th1+(?) has an interrupt controller capability flag for calling SetLineState with interrupts disabled.
 	// Older builds don't have this, so do this in here.
 	BOOLEAN InterruptsEnabled = (_ReadStatusReg(0) & 0x80) == 0;
 	if (InterruptsEnabled) _disable();
-	NTSTATUS Status = BcmpSetLineStateInternal(Bcm2709, Line, NewState);
+	NTSTATUS Status = BcmpSetLineStateInternal(Qsd8250, Line, NewState);
 	if (InterruptsEnabled) _enable();
 	return Status;
 }
 
-static NTSTATUS BcmpRequestInterrupt(__in PQCOM8250_INTERRUPT_DATA Bcm2709, __in PINTERRUPT_LINE Line, __in PINTERRUPT_TARGET Target) {
+static NTSTATUS BcmpRequestInterrupt(__in PQCOM8250_INTERRUPT_DATA Qsd8250, __in PINTERRUPT_LINE Line, __in PINTERRUPT_TARGET Target) {
 	if (
 		Line->Line != VECTOR_MAILBOX0 &&
 		Line->Line != VECTOR_MAILBOX1 &&
@@ -516,7 +516,7 @@ static NTSTATUS BcmpRequestInterrupt(__in PQCOM8250_INTERRUPT_DATA Bcm2709, __in
 		Line->Line != VECTOR_MAILBOX3
 	) {
 		// Only the core mailbox interrupts supported here.
-		SET_INTERRUPT_PROBLEM(Bcm2709, InterruptProblemInvalidType, STATUS_NOT_SUPPORTED);
+		SET_INTERRUPT_PROBLEM(Qsd8250, InterruptProblemInvalidType, STATUS_NOT_SUPPORTED);
 	}
 	ULONG ProcessorNumber = BcmpGetCurrentProcessor();
 	ULONG TargetMask = 0;
@@ -537,26 +537,26 @@ static NTSTATUS BcmpRequestInterrupt(__in PQCOM8250_INTERRUPT_DATA Bcm2709, __in
 			TargetMask = Target->LogicalFlatTarget;
 			break;
 		default:
-			SET_INTERRUPT_PROBLEM(Bcm2709, InterruptProblemInvalidType, STATUS_NOT_SUPPORTED);
+			SET_INTERRUPT_PROBLEM(Qsd8250, InterruptProblemInvalidType, STATUS_NOT_SUPPORTED);
 			break;
 	}
 	ULONG Mailbox = Line->Line - VECTOR_MAILBOX0;
 	for (ULONG Processor = 0; Processor < QCOM8250_PROCESSOR_COUNT; Processor++) {
 		if ((TargetMask & BIT(Processor)) == 0) continue;
-		Bcm2709->ArmPeriphVirt->MAILBOX_SET[Processor].Value[Mailbox] = (1 << ProcessorNumber);
+		Qsd8250->ArmPeriphVirt->MAILBOX_SET[Processor].Value[Mailbox] = (1 << ProcessorNumber);
 	}
 	return STATUS_SUCCESS;
 }
 
-static NTSTATUS BcmpStartProcessor(__in PQCOM8250_INTERRUPT_DATA Bcm2709, __in ULONG LocalUnitId, __in PVOID StartupCodeVirtual, __in ULONG StartupCodePhysical) {
+static NTSTATUS BcmpStartProcessor(__in PQCOM8250_INTERRUPT_DATA Qsd8250, __in ULONG LocalUnitId, __in PVOID StartupCodeVirtual, __in ULONG StartupCodePhysical) {
 	if (LocalUnitId == 0 || LocalUnitId > QCOM8250_PROCESSOR_COUNT) {
 		return STATUS_INVALID_PARAMETER_2;
 	}
-	Bcm2709->ArmPeriphVirt->MAILBOX_SET[LocalUnitId].Value[3] = LocalUnitId;
+	Qsd8250->ArmPeriphVirt->MAILBOX_SET[LocalUnitId].Value[3] = LocalUnitId;
 	return STATUS_SUCCESS;
 }
 
-static NTSTATUS BcmpConvertId(__in PQCOM8250_INTERRUPT_DATA Bcm2709, __inout PULONG PhysicalId, __inout PINTERRUPT_TARGET LogicalTarget, __in BOOLEAN ToLogical) {
+static NTSTATUS BcmpConvertId(__in PQCOM8250_INTERRUPT_DATA Qsd8250, __inout PULONG PhysicalId, __inout PINTERRUPT_TARGET LogicalTarget, __in BOOLEAN ToLogical) {
 	if (ToLogical) {
 		LogicalTarget->Target = InterruptTargetLogicalFlat;
 		LogicalTarget->LogicalFlatTarget = BIT(*PhysicalId);
@@ -564,16 +564,16 @@ static NTSTATUS BcmpConvertId(__in PQCOM8250_INTERRUPT_DATA Bcm2709, __inout PUL
 	}
 	
 	if (LogicalTarget->Target != InterruptTargetLogicalFlat) {
-		SET_INTERRUPT_PROBLEM(Bcm2709, InterruptProblemInvalidType, STATUS_NOT_SUPPORTED);
+		SET_INTERRUPT_PROBLEM(Qsd8250, InterruptProblemInvalidType, STATUS_NOT_SUPPORTED);
 	}
 	
 	ULONG PhysicalTarget = LogicalTarget->PhysicalTarget;
 	if (PhysicalTarget == 0) {
-		SET_INTERRUPT_PROBLEM(Bcm2709, InterruptProblemInvalidType, STATUS_NOT_SUPPORTED);
+		SET_INTERRUPT_PROBLEM(Qsd8250, InterruptProblemInvalidType, STATUS_NOT_SUPPORTED);
 	}
 	
 	if ( ((PhysicalTarget - 1) & PhysicalTarget) != 0 ) {
-		SET_INTERRUPT_PROBLEM(Bcm2709, InterruptProblemInvalidType, STATUS_NOT_SUPPORTED);
+		SET_INTERRUPT_PROBLEM(Qsd8250, InterruptProblemInvalidType, STATUS_NOT_SUPPORTED);
 	}
 	
 	ULONG Index = 0;
