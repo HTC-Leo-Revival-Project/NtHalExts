@@ -591,6 +591,7 @@ AddResourceGroup (
     __in ULONG Handle,
     __in PCSRT_RESOURCE_GROUP_HEADER ResourceGroup
 ) {
+	KeBugCheckEx(0x5C, 0x31415926, 0, 0, 0);
 	memset(s_LocalPriorities, QCOM8250_INVALID_PRIORITY, sizeof(s_LocalPriorities));
 	memset(s_GlobalPriorities, QCOM8250_INVALID_PRIORITY, sizeof(s_GlobalPriorities));
 	s_Handle = Handle;
