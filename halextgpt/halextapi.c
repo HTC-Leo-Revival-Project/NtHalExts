@@ -23,6 +23,7 @@ NTSTATUS HalExtensionInit(
 	__out POS_EXTENSION_HAL_EXTENSION_EXPORTS* Exports,
 	__in POS_EXTENSION_HAL_EXTENSION_IMPORTS Imports
 ) {
+	KeBugCheckEx(0x5E, 0x31415928, 0, 0, 0); //check if we reach init
 	if (Interface != OsExtensionHalExtension) return STATUS_NOINTERFACE;
 	*Exports = &s_Exports;
 	s_Imports = Imports;
