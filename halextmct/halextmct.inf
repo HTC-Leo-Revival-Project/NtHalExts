@@ -1,0 +1,56 @@
+; Samsung Exynos4 Multi-Core Timer (MCT) HAL extension, for Windows 8.1 (9600).
+;
+; Offline install into a mounted image:
+;   dism /Image:<mount> /Add-Driver /Driver:halextmct.inf /ForceUnsigned
+; (/ForceUnsigned because the package has no catalog; the DLL itself is
+; test-signed and needs testsigning on in the BCD.)
+
+[Version]
+Signature="$WINDOWS NT$"
+Class=Computer
+ClassGuid={4d36e966-e325-11ce-bfc1-08002be10318}
+Provider=Exynos441x
+DriverVer=10/31/2026,1.0.0.0
+BootCritical=1
+PnPLockdown=1
+
+[ControlFlags]
+ExcludeFromSelect=*
+
+[DestinationDirs]
+DefaultDestDir = 11 ; DIRID_SYSTEM
+
+[SourceDisksNames]
+3426=windows cd
+
+[SourceDisksFiles]
+halextmct.dll = 3426
+
+[Manufacturer]
+%MFGNAME% = DeviceList, NTARM
+
+[DeviceList.NTARM]
+%EXYNOS_MCT% = EXYNOS_MCT, ACPI\SAMS4210
+
+[EXYNOS_MCT]
+AddReg = EXYNOS_MCT_AddReg
+CopyFiles = EXYNOS_MCT_CopyFiles
+
+[EXYNOS_MCT_AddReg]
+HKLM,"%OSEDB%\VEN_SAMS&DEV_4210","HALExtension",,"halextmct.dll"
+
+[EXYNOS_MCT_CopyFiles]
+halextmct.dll
+
+[EXYNOS_MCT.Services]
+AddService = , %SPSVCINST_ASSOCSERVICE%
+
+[Strings]
+
+; Non-localizable
+SPSVCINST_ASSOCSERVICE = 0x00000002
+OSEDB = "SYSTEM\CurrentControlSet\Control\OSExtensionDatabase"
+
+; Localizable
+MFGNAME    = "Samsung"
+EXYNOS_MCT = "Exynos4 Multi-Core Timer"

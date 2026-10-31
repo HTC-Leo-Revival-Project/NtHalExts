@@ -1,26 +1,31 @@
 # NT HAL extensions
-This repository is for HAL extensions I write, for ARMv7 NT. Please note that headers and libraries from (Win8 M2-era) NT DDK are reproduced here for ease of building. To build, run `build.cmd` in MSVC cross-compile command prompt.
+HAL extensions for ARMv7 NT on the Samsung Galaxy Note (GT-N7000, Exynos4210). Forked from [HTC-Leo-Revival-Project/NtHalExts](https://github.com/HTC-Leo-Revival-Project/NtHalExts); headers and libraries from the (Win8 M2-era) NT DDK are reproduced here for ease of building.
 
-You need correct `CSRT` ACPI tables to load these.
+You need correct `CSRT` ACPI tables to load these (Exynos441xPkg provides them).
 
-## halextgit
-HAL extension for ARM generic timers. Parses both the old-style (`EGIT`) and new-style (`GTDT`) ACPI tables.
+## halextmct
+HAL extension for the Exynos4 Multi-Core Timer (MCT). The Cortex-A9 has no ARM generic timer, so the HAL gets the MCT instead:
 
-Should work on build 789x+ but only tested on 7957+ for now.
+- counter: the free-running 64-bit global counter (`G_CNT`, 24 MHz)
+- interrupt timer: global comparator 0 (`G_COMP0`, SPI 57 = GSI 89), one-shot and pseudo-periodic
 
-`SetInterruptVector` function is provided as a no-op to work around a bug in Windows 8 M3 and below that can cause boot time bugchecks on some systems when using the HAL-provided Generic Interrupt Timer implementation.
+Only one processor is covered, like Linux's `mct-comp` clock event on CPU0.
 
-Will not work on builds 8441-9200, due to a bad check in the HAL. For those builds, bring in [working prodsigned HAL from build 8400](https://msdl.microsoft.com/download/symbols/hal.dll/4fb707aa3a000/hal.dll).
+Loaded for the CSRT resource group with VendorId `SAMS`, DeviceId `0x4210` (`OSExtensionDatabase\VEN_SAMS&DEV_4210`). Tested on Windows RT 8.1 (9600), booting `boot.wim` from a RAM disk.
 
-## halextbcm2709
-HAL extension for QCOM8250 interrupt controllers (QCOM8250 ARM local interrupt controller). Backported from rs1-era HAL.
+### Building (Linux, no Visual Studio)
+Needs clang, lld-link and osslsigncode, plus the Windows SDK and MSVC CRT headers, e.g. from [xwin](https://github.com/Jake-Shadle/xwin):
 
-Interrupt controller HAL extensions have an interesting history, they were added in 789x but removed again in 799x, for builds since then we have to pattern match to find the functions that are no longer exported. Additionally various data structures changed over time, so that must be detected too.
+    xwin --accept-license --arch x86_64 splat --output ~/s2/winsdk/splat
+    halextmct/build.sh          # WINSDK=<splat dir> to override
 
-All of this is done in `halextapi.c`, bugchecks happen on any kind of failure.
+Only headers are used (the current SDK has no ARM32 libraries, and none are needed). `build.sh` test-signs the DLL with `~/s2/winsdk/testsign/testsign.{crt,key}` (`SIGN=` to override); the certificate needs the Code Signing and HAL Extension (`1.3.6.1.4.1.311.61.5.1`) EKUs.
 
-Tested HAL builds 7957, 8061, 8330, 8400; should work up to 9600 but untested.
+`-DLOAD_TEST=1` makes the extension bugcheck with `0x4D435421` ("MCT!", parameters VendorId, DeviceId, handle) as soon as the HAL calls it, to check that it is found and loaded at all.
 
-Some M2-era builds are unstable, setting BCD `numproc` to use only 1 core helps.
+### Installing
+Into a mounted image (e.g. `boot.wim`):
 
-Checked builds appear to be broken although patterns seem to work there.
+    dism /Image:<mount> /Add-Driver /Driver:halextmct.inf /ForceUnsigned
+
+and `bcdedit /set {default} testsigning on` in the BCD that boots it. `halextmct.reg` does the same registry change by hand (e.g. `hivexregedit --merge`).

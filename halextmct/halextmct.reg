@@ -1,0 +1,9 @@
+Windows Registry Editor Version 5.00
+
+; Offline install into the Windows image's SYSTEM hive:
+;   hivexregedit --merge --prefix 'HKEY_LOCAL_MACHINE\SYSTEM' \
+;     <Windows>/System32/config/SYSTEM halextmct.reg
+; and copy halextmct.dll to <Windows>/System32.
+
+[HKEY_LOCAL_MACHINE\SYSTEM\ControlSet001\Control\OSExtensionDatabase\VEN_SAMS&DEV_4210]
+"HALExtension"="halextmct.dll"
